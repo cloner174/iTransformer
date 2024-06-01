@@ -224,7 +224,7 @@ class Dataset_Custom(Dataset):
         self.timeenc = timeenc
         self.freq = freq
         self.test_size = test_size if test_size is not None else 0.2
-        self.train_size = 0.90 - test_size
+        self.train_size = 1 - test_size
         self.kind_of_scaler = kind_of_scaler if kind_of_scaler is not None else 'Standard'
         self.name_of_col_with_date = name_of_col_with_date if name_of_col_with_date is not None else 'date'
         self.root_path = root_path
@@ -250,9 +250,9 @@ class Dataset_Custom(Dataset):
         
         num_train = int(len(df_raw) * self.train_size)
         num_test = int(len(df_raw) * self.test_size)
-        num_vali = len(df_raw) - num_train - num_test
+        #num_vali = len(df_raw) - num_train - num_test
         border1s = [0, num_train - self.seq_len, len(df_raw) - num_test - self.seq_len]
-        border2s = [num_train, num_train + num_vali, len(df_raw)]
+        border2s = [num_train, num_train, len(df_raw)]
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
 
