@@ -18,7 +18,7 @@ def data_provider(args, flag):
     timeenc = 0 if args.embed != 'timeF' else 1
 
     if flag == 'test':
-        shuffle_flag = False
+        shuffle_flag = args.shuffle_test
         drop_last = True
         batch_size = 1  # bsz=1 for evaluation
         freq = args.freq
@@ -29,7 +29,7 @@ def data_provider(args, flag):
         freq = args.freq
         Data = Dataset_Pred
     else:
-        shuffle_flag = True
+        shuffle_flag = args.shuffle_train
         drop_last = True
         batch_size = args.batch_size  # bsz for train and valid
         freq = args.freq
@@ -37,6 +37,10 @@ def data_provider(args, flag):
     data_set = Data(
         root_path=args.root_path,
         data_path=args.data_path,
+        scale = args.scale,
+        test_size = args.test_size,
+        kind_of_scaler = args.kind_of_scaler,
+        name_of_col_with_date = args.name_of_col_with_date,
         flag=flag,
         size=[args.seq_len, args.label_len, args.pred_len],
         features=args.features,
