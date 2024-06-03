@@ -3,10 +3,10 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset, DataLoader
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from utils.timefeatures import time_features
 import warnings
-
+import joblib
 warnings.filterwarnings('ignore')
 
 
@@ -189,15 +189,25 @@ class Dataset_ETT_minute(Dataset):
 
 
 class Dataset_Custom(Dataset):
-    def __init__(self, root_path, flag='train', size=None,
-                 features='S', data_path='ETTh1.csv',
-                 target='OT', scale=True, timeenc=0, freq='h'):
+    def __init__(self, 
+                    root_path, 
+                    flag='train', 
+                    size=None,
+                    features='MS', 
+                    data_path='data.csv',
+                    target='Close', 
+                    scale=True, 
+                    timeenc=0, 
+                    freq='b',
+                    test_size = 0.2, 
+                    kind_of_scaler = None, 
+                    name_of_col_with_date = None):
         # size [seq_len, label_len, pred_len]
         # info
         if size == None:
-            self.seq_len = 24 * 4 * 4
-            self.label_len = 24 * 4
-            self.pred_len = 24 * 4
+            self.seq_len = 1 * 5 * 3        # Three week - work week ! only 5 days are alive!
+            self.label_len = 1 * 1            # Predict one day ahead
+            self.pred_len = 1 * 1            # Just for one time!
         else:
             self.seq_len = size[0]
             self.label_len = size[1]
@@ -212,25 +222,33 @@ class Dataset_Custom(Dataset):
         self.scale = scale
         self.timeenc = timeenc
         self.freq = freq
-
+        self.test_size = test_size if test_size is not None else 0.2
+        self.train_size = 0.90 - test_size
+        self.kind_of_scaler = kind_of_scaler if kind_of_scaler is not None else 'Standard'
+        self.name_of_col_with_date = name_of_col_with_date if name_of_col_with_date is not None else 'date'
         self.root_path = root_path
         self.data_path = data_path
         self.__read_data__()
 
     def __read_data__(self):
-        self.scaler = StandardScaler()
+        
         df_raw = pd.read_csv(os.path.join(self.root_path,
-                                          self.data_path))
+                                            self.data_path))
 
         '''
         df_raw.columns: ['date', ...(other features), target feature]
         '''
+        
         cols = list(df_raw.columns)
         cols.remove(self.target)
-        cols.remove('date')
-        df_raw = df_raw[['date'] + cols + [self.target]]
-        num_train = int(len(df_raw) * 0.7)
-        num_test = int(len(df_raw) * 0.2)
+        cols.remove(self.name_of_col_with_date)
+        df_raw = df_raw[[self.name_of_col_with_date] + cols + [self.target]]
+        cols.insert(0, 'date')
+        cols.append(self.target)
+        df_raw = df_raw.set_axis(cols, axis=1)
+        
+        num_train = int(len(df_raw) * self.train_size)
+        num_test = int(len(df_raw) * self.test_size)
         num_vali = len(df_raw) - num_train - num_test
         border1s = [0, num_train - self.seq_len, len(df_raw) - num_test - self.seq_len]
         border2s = [num_train, num_train + num_vali, len(df_raw)]
@@ -242,14 +260,45 @@ class Dataset_Custom(Dataset):
             df_data = df_raw[cols_data]
         elif self.features == 'S':
             df_data = df_raw[[self.target]]
-
+        
         if self.scale:
-            train_data = df_data[border1s[0]:border2s[0]]
-            self.scaler.fit(train_data.values)
-            data = self.scaler.transform(df_data.values)
+            if self.features == 'S' or self.features == 'MS':
+                col_scaled = []
+                for col in df_data.columns:
+                    col_data = df_data[[col]].values
+                    if self.kind_of_scaler == 'MinMax':
+                        if col == self.target:
+                            self.scaler = MinMaxScaler()
+                        else:
+                            scaler = MinMaxScaler()
+                    else:
+                        if col == self.target:
+                            self.scaler = StandardScaler()
+                        else:
+                            scaler = StandardScaler()
+                    if col == self.target:
+                        self.scaler.fit(col_data[border1s[0]:border2s[0]])
+                        joblib.dump(self.scaler, os.path.join(self.root_path, 'scaler.pkl'))
+                        col_temp = self.scaler.transform(col_data)
+                    else:
+                        scaler.fit(col_data[border1s[0]:border2s[0]])
+                        col_temp = scaler.transform(col_data)
+                    col_scaled.append(col_temp)
+                if len(col_scaled) == 1:
+                    data = col_scaled[0]
+                else:
+                    data = np.concatenate(col_scaled, axis = 1)
+            else:
+                if self.kind_of_scaler == 'MinMax':
+                    self.scaler = MinMaxScaler()
+                else:
+                    self.scaler = StandardScaler()
+                train_data = df_data[border1s[0]:border2s[0]]
+                self.scaler.fit(train_data.values)
+                data = self.scaler.transform(df_data.values)
         else:
             data = df_data.values
-
+        
         df_stamp = df_raw[['date']][border1:border2]
         df_stamp['date'] = pd.to_datetime(df_stamp.date)
         if self.timeenc == 0:
@@ -257,7 +306,7 @@ class Dataset_Custom(Dataset):
             df_stamp['day'] = df_stamp.date.apply(lambda row: row.day, 1)
             df_stamp['weekday'] = df_stamp.date.apply(lambda row: row.weekday(), 1)
             df_stamp['hour'] = df_stamp.date.apply(lambda row: row.hour, 1)
-            data_stamp = df_stamp.drop(['date'], 1).values
+            data_stamp = df_stamp.drop(['date'], axis = 1).values
         elif self.timeenc == 1:
             data_stamp = time_features(pd.to_datetime(df_stamp['date'].values), freq=self.freq)
             data_stamp = data_stamp.transpose(1, 0)
