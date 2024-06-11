@@ -176,7 +176,7 @@ def predict(args, model,
                     temp[col] = data.loc[end_at_first, col]
                 else:
                     temp[col] = preds[i] 
-        temp = pd.DataFrame(temp, index=[data.shape[0]], dtype=int)
+        temp = pd.DataFrame(temp, index=[data.shape[0]])
         temp.insert(loc = date_index, column=date_name, value=next_day)
         data = pd.concat([data, temp])
         if days_to_predict > 1:
