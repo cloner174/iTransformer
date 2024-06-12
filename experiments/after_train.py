@@ -1,18 +1,13 @@
 import os
 import time
 import torch
-import tempfile
-import numpy as np
 import pandas as pd
-from datetime import timedelta
 from .exp_long_term_forecasting import Exp_Long_Term_Forecast
 from .exp_long_term_forecasting_partial import Exp_Long_Term_Forecast_Partial
 from .pre_train import SaveArgs, load_args
 
 
-def predict(args, model,  
-            predict_root = None, predict_data = None, 
-            days_to_predict = 1, retrain = False, new_data = None):#model= setting or actual model
+def predict(args, model, predict_root = None, predict_data = None, retrain = False, new_data = None):#model= setting or actual model
     """
     Use Model To Predict Future Days!
     Argumans:
@@ -32,14 +27,16 @@ def predict(args, model,
         except Exception as e:
             raise AssertionError(f"Fail to read args.pkl reason -> {e}")
     else:
-        try:
-            args_path = SaveArgs(args=args, path='', temporary=True)
-            args_path = args_path.path
-            arg = load_args(args_path)
-            os.unlink(args_path)
-        except Exception as e:
-            raise AssertionError(f"Fail to read args.pkl reason -> {e}")
-    
+        if predict_data is None and new_data is None:
+            arg = args
+        else:
+            try:
+                args_path = SaveArgs(args=args, path='', temporary=True)
+                args_path = args_path.path
+                arg = load_args(args_path)
+                os.unlink(args_path)
+            except Exception as e:
+                raise AssertionError(f"Fail to read args.pkl reason -> {e}")
     
     if retrain and new_data is not None:
         arg.data_path = new_data
@@ -50,8 +47,11 @@ def predict(args, model,
         arg.pred_data_path = predict_data
     
     if isinstance(model, Exp_Long_Term_Forecast) or isinstance(model, Exp_Long_Term_Forecast_Partial):
-        model.args = arg
-        exp = model
+        if predict_data is None and new_data is None:
+            exp = model
+        else:
+            model.args = arg
+            exp = model
     elif isinstance(model, str):
         if arg.exp_name == 'partial_train':
             Exp = Exp_Long_Term_Forecast_Partial
@@ -60,10 +60,15 @@ def predict(args, model,
         exp = Exp(arg)
         try:
             path = os.path.join(arg.checkpoints, model)
-            path = path + '/' + 'checkpoint.pth'
+            if not model.endswith('.pth') or not model.endswith('.pt'):
+                path = path + '/' + 'checkpoint.pth'
+            
             exp.model.load_state_dict(torch.load(path))
         except Exception as e:
             try:
+                if not model.endswith('.pth') or not model.endswith('.pt'):
+                    path = model + '/' + 'checkpoint.pth'
+                
                 exp.model.load_state_dict(torch.load(model))
             except:
                 raise AssertionError(f" There was an Error loading your model with the provded path.Assumed path is {model} and Error was: {e}")
@@ -96,16 +101,11 @@ def predict(args, model,
     
     try:
         df_temp = pd.read_csv(os.path.join(arg.pred_root_path, arg.pred_data_path))
+        end_at_first = df_temp.shape[0] - 1
     except:
         print(f'please inter the path to your prediction data in input arguman : predict_root  and  predict_data')
         print('Where predict_root is the main folder contained your csv file and predict_data is name of the csv file with .csv at the end')
         return 0
-    end_at_first = df_temp.shape[0] - 1
-    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-        temp_path = f"{temp_file.name}.csv"
-        df_temp.to_csv(temp_path, index= False)
-        temp_file.seek(0)
-    del df_temp
     
     folder_path = 'results/Prediction Results/'
     os.makedirs(folder_path, exist_ok=True)
@@ -116,87 +116,49 @@ def predict(args, model,
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         file_path = f"{base}_{timestamp}{ext}"
     
-    for jj in range(days_to_predict):
-        if jj == 0:
-            pass
+    pred = exp.predict(setting=arg, load=False, return_=True)
+    preds = []
+    for i in range(arg.pred_len):
+        preds.append( list(pred[0,i,:]) )
+    
+    cols = list(df_temp.columns)
+    date_name = arg.name_of_col_with_date if hasattr(arg, 'name_of_col_with_date') else 'date'
+    target = arg.target
+    date_index = cols.index(date_name)
+    cols.pop(date_index)
+    border1 = len(df_temp) - arg.seq_len
+    border2 = len(df_temp)
+    tmp_stamp = df_temp[[date_name]][border1:border2]
+    tmp_stamp[date_name] = pd.to_datetime(tmp_stamp[date_name])
+    pred_dates = list( pd.date_range(tmp_stamp.date.values[-1], periods=arg.pred_len + 1, freq=arg.freq) )
+    
+    for j in range(len(pred_dates)):
+        if j+1 == len(pred_dates):
+            break
         else:
-            arg.pred_root_path = 'None'
-            arg.pred_data_path = temp_path
-            exp.args = arg
-        pred_data, pred_loader = exp._get_data(flag='pred')
-        preds = []
-        exp.model.eval()
-        with torch.no_grad():
-            for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(pred_loader):
-                batch_x = batch_x.float().to(exp.device)
-                batch_y = batch_y.float().to(exp.device)
-                batch_x_mark = batch_x_mark.float().to(exp.device)
-                batch_y_mark = batch_y_mark.float().to(exp.device)
-                dec_inp = torch.zeros_like(batch_y[:, -exp.args.pred_len:, :]).float()
-                dec_inp = torch.cat([batch_y[:, :exp.args.label_len, :], dec_inp], dim=1).float().to(exp.device)
-                if exp.args.use_amp:
-                    with torch.cuda.amp.autocast():
-                        if exp.args.output_attention:
-                            outputs = exp.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                        else:
-                            outputs = exp.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                else:
-                    if exp.args.output_attention:
-                        outputs = exp.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
-                    else:
-                        outputs = exp.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
-                outputs = outputs.detach().cpu().numpy()
-                if pred_data.scale:
-                    shape = outputs.shape
-                    outputs = pred_data.inverse_transform(outputs.squeeze(0)).reshape(shape)
-                preds.append(outputs)
-        preds = np.array(preds)
-        preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
-        #preds = [round(any_) for any_ in preds.reshape(-1).tolist()]
-        preds = list(preds[0,0,:])
-        data = pd.read_csv(temp_path)
-        cols = list(data.columns)
-        date_name = arg.name_of_col_with_date if hasattr(arg, 'name_of_col_with_date') else 'date'
-        target = arg.target
-        data[date_name] = pd.to_datetime(data[date_name])
-        last_day = data.loc[data.shape[0]-1,date_name]
-        next_day = last_day + timedelta(days=1)
-        date_index = cols.index(date_name)
-        cols.pop(date_index)
+            next_day = pred_dates[j+1]
         temp = {}
         for i in range(len(cols)):
             col = cols[i]
             if col == target :
                 if arg.features == 'MS' or arg.features == 'S' :
-                    temp[col] = preds[-1]
+                    temp[col] = preds[j][-1]
                 else:
-                    temp[col] = preds[i]
+                    temp[col] = preds[j][i]
             else:
                 if arg.features == 'S':
-                    temp[col] = data.loc[end_at_first, col]
+                    temp[col] = 0
                 else:
-                    temp[col] = preds[i] 
-        temp = pd.DataFrame(temp, index=[data.shape[0]])
+                    temp[col] = preds[j][i] 
+        temp = pd.DataFrame(temp, index=[df_temp.shape[0]])
         temp.insert(loc = date_index, column=date_name, value=next_day)
-        data = pd.concat([data, temp])
-        if days_to_predict > 1:
-            data.to_csv(temp_path, index = False)
-            #if use_predict_on_prediction and retrain:
-            #    if arg.data == 'custom':
-            #        arg.root_path = 'None'
-            #        arg.data_path = temp_path
-            #        exp.args = arg
-            #        exp.train(setting)
-            #    else:
-            #        print("sorry can not be done")
-    
+        df_temp = pd.concat([df_temp, temp])
     
     if arg.features == 'S' or arg.features == 'MS':
-            data = pd.concat( [data.loc[end_at_first:,date_name], data.loc[end_at_first:,target]],axis=1)
+            df_temp = pd.concat( [df_temp.loc[end_at_first+1:,date_name], df_temp.loc[end_at_first+1:,target]],axis=1)
     else:
-        data = data.loc[end_at_first:,:]
-    data.to_csv(file_path, index = False)
-    os.unlink(temp_path)
-    print(f'''The Results of Prediction for The Next {days_to_predict} Days Are Now Stored in 
+        df_temp = df_temp.loc[end_at_first:,:]
+    df_temp.to_csv(file_path, index = False)
+    print(f'''The Results of Prediction for The Next {arg.pred_len} Days Are Now Stored in 
                 {file_path}''')
     return True

@@ -176,7 +176,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         
         trues_during_training = []
         preds_during_training = []
-        
+        #main_train_loss = []
         path = os.path.join(self.args.checkpoints, setting)
         if not os.path.exists(path):
             os.makedirs(path)
@@ -238,11 +238,13 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     outputs = outputs[:, -self.args.pred_len:, f_dim:]
                     batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                     loss = criterion(outputs, batch_y)
-                    preds_during_training.append(outputs.detach().cpu().numpy())
-                    trues_during_training.append(batch_y.detach().cpu().numpy())
                     train_loss.append(loss.item())
+                    
                 
                 if (i + 1) % 100 == 0:
+                    #main_train_loss.append(loss.item())
+                    preds_during_training.append(outputs.detach().cpu().numpy())
+                    trues_during_training.append(batch_y.detach().cpu().numpy())
                     print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
                     speed = (time.time() - time_now) / iter_count
                     left_time = speed * ((self.args.train_epochs - epoch) * train_steps - i)
@@ -260,6 +262,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss = np.average(train_loss)
+            #main_train_loss.append(train_loss)
             #vali_loss = self.vali(vali_data, vali_loader, criterion)
             test_loss = self.vali(test_data, test_loader, criterion)
             self.train_losses.append(train_loss)
@@ -282,20 +285,21 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         preds_during_training = np.array(preds_during_training)
         trues_during_training = np.array(trues_during_training)
         print('\n')
-        print('train shape:', preds_during_training.shape, trues_during_training.shape)
-        preds_during_training = preds_during_training.reshape(-1, preds_during_training.shape[-2], preds_during_training.shape[-1])
-        trues_during_training = trues_during_training.reshape(-1, trues_during_training.shape[-2], trues_during_training.shape[-1])
-        print('train shape:', preds_during_training.shape, trues_during_training.shape)
+        #print('train shape:', preds_during_training.shape, trues_during_training.shape)
+        #preds_during_training = preds_during_training.reshape(-1, preds_during_training.shape[-2], preds_during_training.shape[-1])
+        #trues_during_training = trues_during_training.reshape(-1, trues_during_training.shape[-2], trues_during_training.shape[-1])
+        #print('train shape:', preds_during_training.shape, trues_during_training.shape)
         # result save
         folder_path = './results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
         
-        mae, mse, rmse, mape, mspe = metric(preds_during_training, trues_during_training)
+        mae, mse, rmse, mape, mspe = metric(preds_during_training[len(preds_during_training)//2:], trues_during_training[len(preds_during_training)//2:])
         
         print('Train mse:{},Train mae:{}'.format(mse, mae))
         print('Train rmse:{},Train mape:{}'.format(rmse, mape))
         print('\n')
+        
         time.sleep(2)
         f = open("result_long_term_forecast.txt", 'a')
         f.write(setting + "  \n")
@@ -427,7 +431,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return
 
 
-    def predict(self, setting, load=False):
+    def predict(self, setting, load=False, return_ = False):
         pred_data, pred_loader = self._get_data(flag='pred')
         
         if load:
@@ -463,13 +467,20 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 outputs = outputs.detach().cpu().numpy()
                 batch_y = batch_y.detach().cpu().numpy()
                 self.batch_y = batch_y
-                if pred_data.scale and self.args.inverse:
-                    shape = outputs.shape
-                    outputs = pred_data.inverse_transform(outputs.squeeze(0)).reshape(shape)
+                if pred_data.scale:
+                    if self.args.inverse == 'DO NOT':
+                        pass
+                    else:
+                        shape = outputs.shape
+                        outputs = pred_data.inverse_transform(outputs.squeeze(0)).reshape(shape)
                 preds.append(outputs)
         
         preds = np.array(preds)
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
+        if return_:
+            return preds
+        else:
+            pass
         # result save
         folder_path = './results/' + setting + '/'
         if not os.path.exists(folder_path):

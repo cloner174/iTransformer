@@ -270,7 +270,7 @@ class Dataset_Custom(Dataset):
         elif self.features == 'S':
             df_data = df_raw[[self.target]]
         
-        file_path = self.scaler_path + 'scaler.pkl'
+        file_path = self.scaler_path + '/scaler.pkl'
         if os.path.exists(file_path):
             base, ext = os.path.splitext(file_path)
             timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -566,7 +566,7 @@ class Dataset_Pred(Dataset):
             df_data = df_raw[[self.target]]
         
         
-        file_path = self.scaler_path + 'scaler.pkl'
+        file_path = self.scaler_path + '/' + 'scaler.pkl'
         if os.path.exists(file_path):
             base, ext = os.path.splitext(file_path)
             timestamp = time.strftime("%Y%m%d_%H%M%S")
