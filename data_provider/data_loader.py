@@ -231,8 +231,9 @@ class Dataset_Custom(Dataset):
         self.root_path = root_path
         self.data_path = data_path
         
-        self.scaler_path = os.path.join('./input', 'Scalers')
+        scaler_path = os.path.join('./input', 'Scalers')
         os.makedirs(self.scaler_path, exist_ok=True)
+        self.scaler_path = scaler_path
         
         self.__read_data__()
 
@@ -269,13 +270,6 @@ class Dataset_Custom(Dataset):
             df_data = df_raw[cols_data]
         elif self.features == 'S':
             df_data = df_raw[[self.target]]
-        
-        file_path = self.scaler_path + '/scaler.pkl'
-        if os.path.exists(file_path):
-            base, ext = os.path.splitext(file_path)
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            file_path = f"{base}_{timestamp}{ext}"
-        self.scaler_path = file_path
         
         if self.scale:
             if self.features == 'S' or self.features == 'MS':
@@ -528,8 +522,9 @@ class Dataset_Pred(Dataset):
         max_use_of_row = max_use_of_row if max_use_of_row is not None else 'No Lim'
         self.max_use_of_row = 7 if max_use_of_row.lower() == 'all except a week' else 3 if  max_use_of_row.lower() == 'all except 3 days' else 0
         
-        self.scaler_path = os.path.join('./input', 'Scalers')
+        scaler_path = os.path.join('./input', 'Scalers')
         os.makedirs(self.scaler_path, exist_ok=True)
+        self.scaler_path = scaler_path + '/' + 'scaler.pkl'
         
         self.__read_data__()
     
@@ -566,12 +561,6 @@ class Dataset_Pred(Dataset):
             df_data = df_raw[[self.target]]
         
         
-        file_path = self.scaler_path + '/' + 'scaler.pkl'
-        if os.path.exists(file_path):
-            base, ext = os.path.splitext(file_path)
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            file_path = f"{base}_{timestamp}{ext}"
-        self.scaler_path = file_path
         if self.scale:
             if self.features == 'S' or self.features == 'MS':
                 col_scaled = []
