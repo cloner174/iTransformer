@@ -232,7 +232,7 @@ class Dataset_Custom(Dataset):
         self.data_path = data_path
         
         scaler_path = os.path.join('./input', 'Scalers')
-        os.makedirs(self.scaler_path, exist_ok=True)
+        os.makedirs(scaler_path, exist_ok=True)
         self.scaler_path = scaler_path
         
         self.__read_data__()
