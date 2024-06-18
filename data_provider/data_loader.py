@@ -233,7 +233,7 @@ class Dataset_Custom(Dataset):
         
         scaler_path = os.path.join('./input', 'Scalers')
         os.makedirs(scaler_path, exist_ok=True)
-        self.scaler_path = scaler_path
+        self.scaler_path = scaler_path + '/' + 'scaler.pkl'
         
         self.__read_data__()
 
@@ -523,7 +523,7 @@ class Dataset_Pred(Dataset):
         self.max_use_of_row = 7 if max_use_of_row.lower() == 'all except a week' else 3 if  max_use_of_row.lower() == 'all except 3 days' else 0
         
         scaler_path = os.path.join('./input', 'Scalers')
-        os.makedirs(self.scaler_path, exist_ok=True)
+        os.makedirs(scaler_path, exist_ok=True)
         self.scaler_path = scaler_path + '/' + 'scaler.pkl'
         
         self.__read_data__()
